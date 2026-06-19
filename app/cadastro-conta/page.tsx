@@ -2,28 +2,37 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
+  ArrowRight,
   Check,
   CheckCircle2,
   Crown,
   Gem,
   Headphones,
   Lock,
+  Mail,
   Moon,
   Phone,
   Rocket,
   Scissors,
   ShieldCheck,
   Sun,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
+import { UseFormReturn, useForm } from "react-hook-form";
+import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { ONBOARDING_KEYS, saveOnboardingStep } from "@/store/onboarding-store";
 
 const steps = [
   { number: 1, title: "Dados da Barbearia", text: "Concluído", href: "/cadastro-barbearia", done: true },
@@ -137,12 +146,68 @@ const guarantees = [
   },
 ];
 
+const accountSchema = z
+  .object({
+    adminName: z.string().min(3, "Informe o nome do administrador."),
+    email: z.string().email("Informe um e-mail válido para login."),
+    role: z.string().min(2, "Informe o cargo."),
+    password: z.string().min(8, "A senha deve ter pelo menos 8 caracteres."),
+    confirmPassword: z.string().min(8, "Confirme a senha."),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "As senhas não conferem.",
+    path: ["confirmPassword"],
+  });
+
+type AccountForm = z.infer<typeof accountSchema>;
+
+const accountDefaultValues: AccountForm = {
+  adminName: "",
+  email: "",
+  role: "Administrador",
+  password: "",
+  confirmPassword: "",
+};
+
 export default function CadastroContaPage() {
+  const router = useRouter();
   const [dark, setDark] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState("PROFISSIONAL");
+  const form = useForm<AccountForm>({
+    resolver: zodResolver(accountSchema),
+    defaultValues: accountDefaultValues,
+    mode: "onBlur",
+  });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    const storedAccount = window.localStorage.getItem(ONBOARDING_KEYS.account);
+    const storedPlan = window.localStorage.getItem(ONBOARDING_KEYS.plan);
+
+    if (storedAccount) {
+      const parsed = JSON.parse(storedAccount) as Partial<AccountForm>;
+      form.reset({ ...accountDefaultValues, ...parsed, password: "", confirmPassword: "" });
+    }
+
+    if (storedPlan) {
+      const parsed = JSON.parse(storedPlan) as { name?: string };
+      if (parsed.name) setSelectedPlan(parsed.name);
+    }
+  }, [form]);
+
+  const onSubmit = form.handleSubmit((values) => {
+    saveOnboardingStep(ONBOARDING_KEYS.plan, { name: selectedPlan });
+    saveOnboardingStep(ONBOARDING_KEYS.account, {
+      adminName: values.adminName,
+      email: values.email,
+      role: values.role,
+      passwordConfigured: true,
+    });
+    router.push("/cadastro/configuracoes-iniciais");
+  });
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-barber-ink dark:bg-background dark:text-foreground">
@@ -234,11 +299,25 @@ export default function CadastroContaPage() {
               </p>
             </div>
 
-            <div className="mt-10 grid gap-6 lg:grid-cols-2 2xl:grid-cols-4">
+            <form onSubmit={onSubmit}>
+              <div className="mt-10 grid gap-6 lg:grid-cols-2 2xl:grid-cols-4">
               {plans.map((plan) => (
-                <PlanCard key={plan.name} plan={plan} />
+                <PlanCard key={plan.name} plan={plan} selected={selectedPlan === plan.name} onSelect={() => setSelectedPlan(plan.name)} />
               ))}
-            </div>
+              </div>
+
+              <AccountAccessCard form={form} selectedPlan={selectedPlan} />
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <Button asChild variant="outline" className="h-14 rounded-lg bg-white px-8 text-base font-bold dark:bg-card">
+                  <Link href="/cadastro/barbearia">Voltar</Link>
+                </Button>
+                <Button type="submit" className="h-14 rounded-lg px-9 text-base font-black">
+                  Continuar
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </div>
+            </form>
 
             <Card className="mt-7 rounded-lg border-[#F2D08B] bg-[#FFF9EF] shadow-[0_16px_42px_rgba(212,160,23,0.11)] dark:border-barber-gold/25 dark:bg-card">
               <CardContent className="grid gap-6 p-6 md:grid-cols-2 xl:grid-cols-[1.15fr_1fr_1fr_1.15fr] xl:items-center">
@@ -298,6 +377,8 @@ export default function CadastroContaPage() {
 
 function PlanCard({
   plan,
+  selected,
+  onSelect,
 }: {
   plan: {
     name: string;
@@ -310,6 +391,8 @@ function PlanCard({
     featured: boolean;
     features: string[];
   };
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const Icon = plan.icon;
 
@@ -317,7 +400,7 @@ function PlanCard({
     <Card
       className={cn(
         "relative rounded-lg bg-white shadow-[0_16px_42px_rgba(15,23,42,0.08)] transition-transform hover:-translate-y-1 dark:bg-card",
-        plan.featured ? "border-barber-gold shadow-[0_22px_55px_rgba(212,160,23,0.14)]" : "border-slate-200",
+        selected ? "border-barber-gold shadow-[0_22px_55px_rgba(212,160,23,0.14)]" : "border-slate-200",
       )}
     >
       {plan.featured && (
@@ -353,16 +436,111 @@ function PlanCard({
         </ul>
 
         <Button
-          asChild
-          variant={plan.featured ? "default" : "outline"}
+          type="button"
+          onClick={onSelect}
+          variant={selected ? "default" : "outline"}
           className={cn(
             "mt-9 h-12 rounded-lg text-base font-black",
-            !plan.featured && "border-slate-300 bg-white text-slate-950 hover:bg-slate-50 dark:bg-background dark:text-white dark:hover:bg-slate-900",
+            !selected && "border-slate-300 bg-white text-slate-950 hover:bg-slate-50 dark:bg-background dark:text-white dark:hover:bg-slate-900",
           )}
         >
-          <Link href="/cadastro/configuracoes-iniciais">Escolher plano</Link>
+          {selected ? "Plano selecionado" : "Escolher plano"}
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+function AccountAccessCard({
+  form,
+  selectedPlan,
+}: {
+  form: UseFormReturn<AccountForm>;
+  selectedPlan: string;
+}) {
+  return (
+    <Card className="mt-7 rounded-lg border-slate-200 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.08)] dark:bg-card">
+      <CardContent className="p-7 md:p-9">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-2xl font-black">Crie sua conta de acesso</h2>
+            <p className="mt-2 text-base text-slate-500 dark:text-slate-300">
+              Essa senha será usada para entrar no painel da sua barbearia.
+            </p>
+          </div>
+          <div className="rounded-lg bg-barber-gold/10 px-4 py-3 text-sm font-black text-barber-gold">
+            Plano: {selectedPlan}
+          </div>
+        </div>
+
+        <div className="mt-7 grid gap-5 md:grid-cols-2">
+          <AccessField
+            label="Nome do administrador"
+            icon={UserRound}
+            placeholder="Ex.: João Santos"
+            error={form.formState.errors.adminName?.message}
+            {...form.register("adminName")}
+          />
+          <AccessField
+            label="Cargo"
+            icon={ShieldCheck}
+            placeholder="Administrador"
+            error={form.formState.errors.role?.message}
+            {...form.register("role")}
+          />
+          <AccessField
+            label="E-mail de login"
+            icon={Mail}
+            type="email"
+            placeholder="joao@barbearia.com.br"
+            error={form.formState.errors.email?.message}
+            {...form.register("email")}
+          />
+          <div className="hidden md:block" />
+          <AccessField
+            label="Senha"
+            icon={Lock}
+            type="password"
+            placeholder="Mínimo 8 caracteres"
+            error={form.formState.errors.password?.message}
+            {...form.register("password")}
+          />
+          <AccessField
+            label="Confirmar senha"
+            icon={Lock}
+            type="password"
+            placeholder="Repita sua senha"
+            error={form.formState.errors.confirmPassword?.message}
+            {...form.register("confirmPassword")}
+          />
+        </div>
+
+        <div className="mt-6 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
+          A senha não é exibida na confirmação por segurança. No próximo passo, sua conta ficará pronta para entrar no sistema.
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccessField({
+  label,
+  icon: Icon,
+  error,
+  ...props
+}: {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  error?: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block">
+      <span className="text-sm font-black">{label} <span className="text-red-500">*</span></span>
+      <div className="relative mt-2">
+        <Icon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+        <Input className="h-12 rounded-lg pl-12 text-base" {...props} />
+      </div>
+      {error && <p className="mt-2 text-xs font-semibold text-red-600">{error}</p>}
+    </label>
   );
 }

@@ -14,7 +14,6 @@ import {
   Clock3,
   CreditCard,
   Grid2X2,
-  Headphones,
   LockKeyhole,
   Mail,
   MapPin,
@@ -22,6 +21,7 @@ import {
   Moon,
   Package,
   Phone,
+  Plus,
   Save,
   Search,
   Send,
@@ -30,11 +30,14 @@ import {
   Sparkles,
   Store,
   Sun,
+  Trash2,
+  Upload,
   UserCog,
+  UserPlus,
   UsersRound,
-  WalletCards,
+  X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -43,6 +46,116 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+
+const STORAGE_KEY = "barberpro-settings";
+
+type DayConfig = {
+  id: string;
+  day: string;
+  active: boolean;
+  open: string;
+  close: string;
+  intervals: string[];
+};
+
+type TeamUser = {
+  id: string;
+  name: string;
+  role: string;
+  access: string;
+  initials: string;
+};
+
+type SettingsState = {
+  business: {
+    tradeName: string;
+    document: string;
+    phone: string;
+    email: string;
+    address: string;
+    city: string;
+    state: string;
+    logoName: string;
+  };
+  schedule: DayConfig[];
+  appointments: {
+    interval: string;
+    minAdvance: string;
+    maxAdvance: string;
+    cancelLimit: string;
+    whatsappConfirmation: boolean;
+    blockBusyTimes: boolean;
+  };
+  preferences: {
+    currency: string;
+    timezone: string;
+    language: string;
+    weekStart: string;
+    stockEnabled: boolean;
+    financialEnabled: boolean;
+  };
+  integrations: Record<string, boolean>;
+  security: {
+    strongPassword: boolean;
+    auditLogs: boolean;
+    twoFactor: boolean;
+  };
+  users: TeamUser[];
+};
+
+const defaultSettings: SettingsState = {
+  business: {
+    tradeName: "Barbearia Estilo",
+    document: "00.000.000/0000-00",
+    phone: "(11) 99999-9999",
+    email: "contato@barbearia.com.br",
+    address: "Rua das Navalhas, 248 - Centro",
+    city: "São Paulo",
+    state: "SP",
+    logoName: "barbearia-estilo.png",
+  },
+  schedule: [
+    { id: "mon", day: "Segunda-feira", active: true, open: "08:00", close: "20:00", intervals: [] },
+    { id: "tue", day: "Terça-feira", active: true, open: "08:00", close: "20:00", intervals: [] },
+    { id: "wed", day: "Quarta-feira", active: true, open: "08:00", close: "20:00", intervals: [] },
+    { id: "thu", day: "Quinta-feira", active: true, open: "08:00", close: "20:00", intervals: [] },
+    { id: "fri", day: "Sexta-feira", active: true, open: "08:00", close: "21:00", intervals: [] },
+    { id: "sat", day: "Sábado", active: true, open: "08:00", close: "18:00", intervals: [] },
+    { id: "sun", day: "Domingo", active: false, open: "08:00", close: "18:00", intervals: [] },
+  ],
+  appointments: {
+    interval: "30 minutos",
+    minAdvance: "1 hora",
+    maxAdvance: "30 dias",
+    cancelLimit: "2 horas de antecedência",
+    whatsappConfirmation: true,
+    blockBusyTimes: true,
+  },
+  preferences: {
+    currency: "Real (R$)",
+    timezone: "(GMT-03:00) Brasília",
+    language: "Português (Brasil)",
+    weekStart: "Segunda-feira",
+    stockEnabled: true,
+    financialEnabled: true,
+  },
+  integrations: {
+    whatsapp: true,
+    email: true,
+    sms: false,
+    pix: false,
+  },
+  security: {
+    strongPassword: true,
+    auditLogs: true,
+    twoFactor: false,
+  },
+  users: [
+    { id: "1", name: "João Santos", role: "Administrador", access: "Acesso total", initials: "JS" },
+    { id: "2", name: "Carlos Eduardo", role: "Barbeiro", access: "Agenda e clientes", initials: "CE" },
+    { id: "3", name: "Bruno Costa", role: "Barbeiro", access: "Agenda e serviços", initials: "BC" },
+  ],
+};
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: Grid2X2 },
@@ -58,28 +171,178 @@ const navItems = [
   { label: "Ajuda", href: "/#contato", icon: CircleHelp },
 ];
 
-const weekDays = [
-  ["Segunda-feira", "08:00", "20:00", true],
-  ["Terça-feira", "08:00", "20:00", true],
-  ["Quarta-feira", "08:00", "20:00", true],
-  ["Quinta-feira", "08:00", "20:00", true],
-  ["Sexta-feira", "08:00", "21:00", true],
-  ["Sábado", "08:00", "18:00", true],
-  ["Domingo", "Fechado", "-", false],
-] as const;
-
-const users = [
-  { name: "João Santos", role: "Administrador", access: "Acesso total", initials: "JS" },
-  { name: "Carlos Eduardo", role: "Barbeiro", access: "Agenda e clientes", initials: "CE" },
-  { name: "Bruno Costa", role: "Barbeiro", access: "Agenda e serviços", initials: "BC" },
-];
-
 export default function ConfiguracoesPage() {
   const [dark, setDark] = useState(false);
+  const [settings, setSettings] = useState<SettingsState>(defaultSettings);
+  const [savedSettings, setSavedSettings] = useState<SettingsState>(defaultSettings);
+  const [status, setStatus] = useState("Pronto para editar");
+  const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+      return;
+    }
+
+    try {
+      const parsed = normalizeSettings(JSON.parse(raw));
+      setSettings(parsed);
+      setSavedSettings(parsed);
+      setStatus("Configurações carregadas");
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY);
+      setStatus("Não foi possível carregar configurações salvas");
+    }
+  }, []);
+
+  const activeDays = useMemo(() => settings.schedule.filter((day) => day.active), [settings.schedule]);
+  const operatingHours = activeDays.length ? `${activeDays[0].open} - ${activeDays[0].close}` : "Fechado";
+
+  function updateBusiness(field: keyof SettingsState["business"], value: string) {
+    setSettings((current) => ({
+      ...current,
+      business: { ...current.business, [field]: value },
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function updateAppointments(field: keyof SettingsState["appointments"], value: string | boolean) {
+    setSettings((current) => ({
+      ...current,
+      appointments: { ...current.appointments, [field]: value },
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function updatePreferences(field: keyof SettingsState["preferences"], value: string | boolean) {
+    setSettings((current) => ({
+      ...current,
+      preferences: { ...current.preferences, [field]: value },
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function updateSecurity(field: keyof SettingsState["security"], value: boolean) {
+    setSettings((current) => ({
+      ...current,
+      security: { ...current.security, [field]: value },
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function updateIntegration(key: string, value: boolean) {
+    setSettings((current) => ({
+      ...current,
+      integrations: { ...current.integrations, [key]: value },
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function updateDay(dayId: string, changes: Partial<DayConfig>) {
+    setSettings((current) => ({
+      ...current,
+      schedule: current.schedule.map((day) => (day.id === dayId ? { ...day, ...changes } : day)),
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function addInterval(dayId: string) {
+    setSettings((current) => ({
+      ...current,
+      schedule: current.schedule.map((day) =>
+        day.id === dayId ? { ...day, intervals: [...day.intervals, "12:00 - 13:00"] } : day,
+      ),
+    }));
+    setStatus("Intervalo adicionado");
+  }
+
+  function removeInterval(dayId: string, index: number) {
+    setSettings((current) => ({
+      ...current,
+      schedule: current.schedule.map((day) =>
+        day.id === dayId ? { ...day, intervals: day.intervals.filter((_, itemIndex) => itemIndex !== index) } : day,
+      ),
+    }));
+    setStatus("Intervalo removido");
+  }
+
+  function updateUser(userId: string, changes: Partial<TeamUser>) {
+    setSettings((current) => ({
+      ...current,
+      users: current.users.map((user) => (user.id === userId ? { ...user, ...changes } : user)),
+    }));
+    setStatus("Alterações pendentes");
+  }
+
+  function addUser() {
+    setSettings((current) => ({
+      ...current,
+      users: [
+        ...current.users,
+        {
+          id: String(Date.now()),
+          name: "Novo usuário",
+          role: "Recepcionista",
+          access: "Agenda e clientes",
+          initials: "NU",
+        },
+      ],
+    }));
+    setStatus("Usuário adicionado");
+  }
+
+  function removeUser(userId: string) {
+    setSettings((current) => ({
+      ...current,
+      users: current.users.filter((user) => user.id !== userId),
+    }));
+    setStatus("Usuário removido");
+  }
+
+  function removeLogo() {
+    updateBusiness("logoName", "");
+    setStatus("Logo removida");
+  }
+
+  function validateSettings() {
+    const nextErrors: string[] = [];
+
+    if (!settings.business.tradeName.trim()) nextErrors.push("Informe o nome fantasia.");
+    if (!settings.business.phone.trim()) nextErrors.push("Informe o telefone principal.");
+    if (!settings.business.email.includes("@")) nextErrors.push("Informe um e-mail comercial válido.");
+    if (!settings.schedule.some((day) => day.active)) nextErrors.push("Ative pelo menos um dia de funcionamento.");
+
+    settings.schedule.forEach((day) => {
+      if (day.active && day.open >= day.close) {
+        nextErrors.push(`${day.day}: o horário de abertura deve ser menor que o fechamento.`);
+      }
+    });
+
+    setErrors(nextErrors);
+    return nextErrors.length === 0;
+  }
+
+  function saveSettings() {
+    if (!validateSettings()) {
+      setStatus("Corrija os campos destacados antes de salvar");
+      return;
+    }
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    setSavedSettings(settings);
+    setStatus("Configurações salvas com sucesso");
+  }
+
+  function cancelChanges() {
+    setSettings(savedSettings);
+    setErrors([]);
+    setStatus("Alterações canceladas");
+  }
 
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-barber-ink dark:bg-background dark:text-foreground">
@@ -94,39 +357,51 @@ export default function ConfiguracoesPage() {
               <p className="text-sm font-black uppercase text-barber-gold">Sistema BarberPro</p>
               <h1 className="mt-2 text-3xl font-black tracking-normal md:text-4xl">Configurações</h1>
               <p className="mt-3 max-w-3xl text-lg text-slate-500 dark:text-slate-300">
-                Ajuste dados da barbearia, horários, regras de agendamento, integrações, equipe e segurança.
+                Edite dados da barbearia, horários, regras de agendamento, integrações, equipe e segurança.
               </p>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Button variant="outline" className="h-12 rounded-lg border-slate-200 bg-white px-6 text-base font-bold dark:bg-card">
+              <Button onClick={cancelChanges} variant="outline" className="h-12 rounded-lg border-slate-200 bg-white px-6 text-base font-bold dark:bg-card">
                 Cancelar
               </Button>
-              <Button className="h-12 rounded-lg bg-barber-gold px-6 text-base font-bold text-white hover:bg-[#bd8f13]">
+              <Button onClick={saveSettings} className="h-12 rounded-lg bg-barber-gold px-6 text-base font-bold text-white hover:bg-[#bd8f13]">
                 <Save className="mr-2 h-5 w-5" />
                 Salvar alterações
               </Button>
             </div>
           </div>
 
+          <div className="mt-5 rounded-lg border border-barber-gold/25 bg-[#FFFBF3] px-5 py-4 text-sm font-semibold text-slate-700">
+            {status}
+          </div>
+
+          {errors.length > 0 && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
+              {errors.map((error) => (
+                <p key={error}>{error}</p>
+              ))}
+            </div>
+          )}
+
           <div className="mt-7 grid gap-5 lg:grid-cols-3">
-            <OverviewCard icon={Store} title="Unidade principal" value="Barbearia Estilo" description="Plano profissional ativo" tone="gold" />
-            <OverviewCard icon={Clock3} title="Funcionamento" value="08:00 - 20:00" description="Domingo fechado" tone="green" />
-            <OverviewCard icon={ShieldCheck} title="Segurança" value="100%" description="Ambiente protegido" tone="blue" />
+            <OverviewCard icon={Store} title="Unidade principal" value={settings.business.tradeName || "Sem nome"} description="Plano profissional ativo" tone="gold" />
+            <OverviewCard icon={Clock3} title="Funcionamento" value={operatingHours} description={`${activeDays.length} dias ativos`} tone="green" />
+            <OverviewCard icon={ShieldCheck} title="Segurança" value={settings.security.auditLogs ? "Ativa" : "Parcial"} description="Ambiente protegido" tone="blue" />
           </div>
 
           <div className="mt-6 grid gap-5 2xl:grid-cols-[1fr_0.9fr]">
             <div className="space-y-5">
-              <BusinessSettings />
-              <ScheduleSettings />
-              <AppointmentSettings />
+              <BusinessSettings settings={settings} updateBusiness={updateBusiness} removeLogo={removeLogo} />
+              <ScheduleSettings schedule={settings.schedule} updateDay={updateDay} addInterval={addInterval} removeInterval={removeInterval} />
+              <AppointmentSettings settings={settings} updateAppointments={updateAppointments} />
             </div>
 
             <div className="space-y-5">
-              <SystemPreferences />
-              <IntegrationsCard />
-              <UsersCard />
-              <SecurityCard />
+              <SystemPreferences settings={settings} updatePreferences={updatePreferences} />
+              <IntegrationsCard integrations={settings.integrations} updateIntegration={updateIntegration} />
+              <UsersCard users={settings.users} updateUser={updateUser} addUser={addUser} removeUser={removeUser} />
+              <SecurityCard security={settings.security} updateSecurity={updateSecurity} />
             </div>
           </div>
         </section>
@@ -232,6 +507,243 @@ function Topbar({ dark, setDark }: { dark: boolean; setDark: (value: boolean) =>
   );
 }
 
+function BusinessSettings({
+  settings,
+  updateBusiness,
+  removeLogo,
+}: {
+  settings: SettingsState;
+  updateBusiness: (field: keyof SettingsState["business"], value: string) => void;
+  removeLogo: () => void;
+}) {
+  return (
+    <FormCard icon={Store} title="Dados da barbearia" description="Informações principais exibidas no sistema e nos comprovantes.">
+      <div className="grid gap-5 md:grid-cols-2">
+        <Field label="Nome fantasia" value={settings.business.tradeName} onChange={(value) => updateBusiness("tradeName", value)} icon={Store} />
+        <Field label="CNPJ" value={settings.business.document} onChange={(value) => updateBusiness("document", value)} icon={CreditCard} />
+        <Field label="Telefone principal" value={settings.business.phone} onChange={(value) => updateBusiness("phone", value)} icon={Phone} />
+        <Field label="E-mail comercial" value={settings.business.email} onChange={(value) => updateBusiness("email", value)} icon={Mail} type="email" />
+        <Field label="Cidade" value={settings.business.city} onChange={(value) => updateBusiness("city", value)} icon={MapPin} />
+        <Field label="Estado" value={settings.business.state} onChange={(value) => updateBusiness("state", value)} />
+      </div>
+      <Field className="mt-5" label="Endereço completo" value={settings.business.address} onChange={(value) => updateBusiness("address", value)} icon={MapPin} />
+
+      <div className="mt-5 flex flex-col gap-4 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center">
+        <Avatar className="h-20 w-20 rounded-lg">
+          <AvatarFallback className="rounded-lg bg-black text-barber-gold">BE</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="font-black">Logo da barbearia</p>
+          <p className="mt-1 text-sm text-slate-500">{settings.business.logoName || "Nenhuma logo cadastrada"}</p>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <label className="inline-flex h-10 cursor-pointer items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold hover:bg-slate-50 dark:bg-background">
+            <Upload className="mr-2 h-4 w-4" />
+            Alterar
+            <input
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) updateBusiness("logoName", file.name);
+              }}
+            />
+          </label>
+          <Button onClick={removeLogo} variant="outline" className="rounded-lg border-red-200 bg-red-50 text-red-600 hover:bg-red-100">
+            Remover
+          </Button>
+        </div>
+      </div>
+    </FormCard>
+  );
+}
+
+function ScheduleSettings({
+  schedule,
+  updateDay,
+  addInterval,
+  removeInterval,
+}: {
+  schedule: DayConfig[];
+  updateDay: (dayId: string, changes: Partial<DayConfig>) => void;
+  addInterval: (dayId: string) => void;
+  removeInterval: (dayId: string, index: number) => void;
+}) {
+  return (
+    <FormCard icon={Clock3} title="Horário de funcionamento" description="Configure dias abertos, horários e intervalos da unidade.">
+      <div className="space-y-3">
+        {schedule.map((day) => (
+          <div key={day.id} className="rounded-lg border border-slate-200 p-4">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+              <div className="flex items-center justify-between gap-4">
+                <p className="font-black">{day.day}</p>
+                <Switch checked={day.active} onCheckedChange={(checked) => updateDay(day.id, { active: checked })} aria-label={`Ativar ${day.day}`} />
+              </div>
+              <Input
+                type="time"
+                value={day.open}
+                disabled={!day.active}
+                onChange={(event) => updateDay(day.id, { open: event.target.value })}
+                className="h-11 rounded-lg bg-white md:w-32 dark:bg-background"
+              />
+              <Input
+                type="time"
+                value={day.close}
+                disabled={!day.active}
+                onChange={(event) => updateDay(day.id, { close: event.target.value })}
+                className="h-11 rounded-lg bg-white md:w-32 dark:bg-background"
+              />
+              <Button
+                type="button"
+                onClick={() => addInterval(day.id)}
+                disabled={!day.active}
+                variant="outline"
+                className="h-11 rounded-lg border-emerald-100 bg-emerald-50 text-emerald-700 disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Intervalo
+              </Button>
+            </div>
+            {day.intervals.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {day.intervals.map((interval, index) => (
+                  <span key={`${day.id}-${interval}-${index}`} className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold">
+                    {interval}
+                    <button type="button" onClick={() => removeInterval(day.id, index)} className="text-red-600" aria-label="Remover intervalo">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </FormCard>
+  );
+}
+
+function AppointmentSettings({
+  settings,
+  updateAppointments,
+}: {
+  settings: SettingsState;
+  updateAppointments: (field: keyof SettingsState["appointments"], value: string | boolean) => void;
+}) {
+  return (
+    <FormCard icon={CalendarDays} title="Regras de agendamento" description="Defina limites, confirmações e comportamento da agenda.">
+      <div className="grid gap-5 md:grid-cols-2">
+        <SelectField label="Intervalo padrão entre serviços" value={settings.appointments.interval} onChange={(value) => updateAppointments("interval", value)} options={["15 minutos", "30 minutos", "45 minutos", "60 minutos"]} />
+        <SelectField label="Antecedência mínima para agendar" value={settings.appointments.minAdvance} onChange={(value) => updateAppointments("minAdvance", value)} options={["30 minutos", "1 hora", "2 horas", "1 dia"]} />
+        <SelectField label="Antecedência máxima para agendar" value={settings.appointments.maxAdvance} onChange={(value) => updateAppointments("maxAdvance", value)} options={["7 dias", "15 dias", "30 dias", "60 dias"]} />
+        <SelectField label="Cancelamento permitido com até" value={settings.appointments.cancelLimit} onChange={(value) => updateAppointments("cancelLimit", value)} options={["1 hora de antecedência", "2 horas de antecedência", "6 horas de antecedência", "1 dia de antecedência"]} />
+      </div>
+      <ToggleRow className="mt-5" title="Confirmação automática por WhatsApp" description="Enviar lembrete e confirmação sem ação manual." checked={settings.appointments.whatsappConfirmation} onChange={(checked) => updateAppointments("whatsappConfirmation", checked)} />
+      <ToggleRow title="Bloquear horários ocupados" description="Evita conflitos de agenda entre profissionais e serviços." checked={settings.appointments.blockBusyTimes} onChange={(checked) => updateAppointments("blockBusyTimes", checked)} />
+    </FormCard>
+  );
+}
+
+function SystemPreferences({
+  settings,
+  updatePreferences,
+}: {
+  settings: SettingsState;
+  updatePreferences: (field: keyof SettingsState["preferences"], value: string | boolean) => void;
+}) {
+  return (
+    <FormCard icon={Settings} title="Preferências do sistema" description="Padrões usados em relatórios, telas e cadastros.">
+      <div className="grid gap-4">
+        <SelectField label="Moeda" value={settings.preferences.currency} onChange={(value) => updatePreferences("currency", value)} options={["Real (R$)", "Dólar (US$)", "Euro (€)"]} />
+        <SelectField label="Fuso horário" value={settings.preferences.timezone} onChange={(value) => updatePreferences("timezone", value)} options={["(GMT-03:00) Brasília", "(GMT-04:00) Manaus", "(GMT-05:00) Acre"]} />
+        <SelectField label="Idioma" value={settings.preferences.language} onChange={(value) => updatePreferences("language", value)} options={["Português (Brasil)", "English", "Español"]} />
+        <SelectField label="Primeiro dia da semana" value={settings.preferences.weekStart} onChange={(value) => updatePreferences("weekStart", value)} options={["Segunda-feira", "Domingo"]} />
+      </div>
+      <ToggleRow className="mt-5" title="Controle de estoque" description="Produtos, alertas e baixa automática." checked={settings.preferences.stockEnabled} onChange={(checked) => updatePreferences("stockEnabled", checked)} />
+      <ToggleRow title="Módulo financeiro" description="Receitas, despesas, caixa e relatórios." checked={settings.preferences.financialEnabled} onChange={(checked) => updatePreferences("financialEnabled", checked)} />
+    </FormCard>
+  );
+}
+
+function IntegrationsCard({
+  integrations,
+  updateIntegration,
+}: {
+  integrations: Record<string, boolean>;
+  updateIntegration: (key: string, value: boolean) => void;
+}) {
+  return (
+    <FormCard icon={Send} title="Integrações" description="Canais de confirmação e automações.">
+      <IntegrationRow title="WhatsApp Business" status={integrations.whatsapp ? "Conectado" : "Desconectado"} checked={integrations.whatsapp} onChange={(checked) => updateIntegration("whatsapp", checked)} />
+      <IntegrationRow title="E-mail transacional" status={integrations.email ? "Ativo" : "Inativo"} checked={integrations.email} onChange={(checked) => updateIntegration("email", checked)} />
+      <IntegrationRow title="SMS" status={integrations.sms ? "Ativo" : "Pendente"} checked={integrations.sms} onChange={(checked) => updateIntegration("sms", checked)} />
+      <IntegrationRow title="Pagamentos Pix" status={integrations.pix ? "Conectado" : "Configurar"} checked={integrations.pix} onChange={(checked) => updateIntegration("pix", checked)} />
+    </FormCard>
+  );
+}
+
+function UsersCard({
+  users,
+  updateUser,
+  addUser,
+  removeUser,
+}: {
+  users: TeamUser[];
+  updateUser: (userId: string, changes: Partial<TeamUser>) => void;
+  addUser: () => void;
+  removeUser: (userId: string) => void;
+}) {
+  return (
+    <FormCard icon={UserCog} title="Usuários e permissões" description="Equipe com acesso ao BarberPro.">
+      <div className="space-y-4">
+        {users.map((user) => (
+          <div key={user.id} className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[auto_1fr_auto] md:items-center">
+            <Avatar className="h-12 w-12">
+              <AvatarFallback className="bg-slate-200 text-slate-900">{user.initials}</AvatarFallback>
+            </Avatar>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input value={user.name} onChange={(event) => updateUser(user.id, { name: event.target.value, initials: getInitials(event.target.value) })} className="h-11 rounded-lg" />
+              <Input value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value })} className="h-11 rounded-lg" />
+              <Input value={user.access} onChange={(event) => updateUser(user.id, { access: event.target.value })} className="h-11 rounded-lg" />
+            </div>
+            <Button type="button" onClick={() => removeUser(user.id)} variant="outline" size="icon" className="h-11 w-11 rounded-lg border-red-200 bg-red-50 text-red-600">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <Button onClick={addUser} className="mt-5 h-11 w-full rounded-lg bg-barber-gold text-white hover:bg-[#bd8f13]">
+        <UserPlus className="mr-2 h-5 w-5" />
+        Convidar usuário
+      </Button>
+    </FormCard>
+  );
+}
+
+function SecurityCard({
+  security,
+  updateSecurity,
+}: {
+  security: SettingsState["security"];
+  updateSecurity: (field: keyof SettingsState["security"], value: boolean) => void;
+}) {
+  return (
+    <FormCard icon={ShieldCheck} title="Segurança" description="Proteção de dados e sessão da barbearia.">
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+        <div className="flex items-center gap-3">
+          <LockKeyhole className="h-6 w-6 text-blue-700" />
+          <p className="font-black text-blue-950">Ambiente 100% seguro</p>
+        </div>
+        <p className="mt-2 text-sm text-blue-900">Sessões protegidas, isolamento por tenant e dados preparados para PostgreSQL.</p>
+      </div>
+      <ToggleRow className="mt-5" title="Exigir senha forte" description="Aplicar regras mínimas para novos usuários." checked={security.strongPassword} onChange={(checked) => updateSecurity("strongPassword", checked)} />
+      <ToggleRow title="Registrar logs de alterações" description="Auditoria de ações importantes no sistema." checked={security.auditLogs} onChange={(checked) => updateSecurity("auditLogs", checked)} />
+      <ToggleRow title="Autenticação em duas etapas" description="Camada extra de segurança para administradores." checked={security.twoFactor} onChange={(checked) => updateSecurity("twoFactor", checked)} />
+    </FormCard>
+  );
+}
+
 function OverviewCard({
   icon: Icon,
   title,
@@ -267,134 +779,6 @@ function OverviewCard({
   );
 }
 
-function BusinessSettings() {
-  return (
-    <FormCard icon={Store} title="Dados da barbearia" description="Informações principais exibidas no sistema e nos comprovantes.">
-      <div className="grid gap-5 md:grid-cols-2">
-        <Field label="Nome fantasia" value="Barbearia Estilo" icon={Store} />
-        <Field label="CNPJ" value="00.000.000/0000-00" icon={CreditCard} />
-        <Field label="Telefone principal" value="(11) 99999-9999" icon={Phone} />
-        <Field label="E-mail comercial" value="contato@barbearia.com.br" icon={Mail} />
-      </div>
-      <Field className="mt-5" label="Endereço completo" value="Rua das Navalhas, 248 - Centro, São Paulo - SP" icon={MapPin} />
-      <div className="mt-5 flex flex-col gap-4 rounded-lg border border-slate-200 p-4 sm:flex-row sm:items-center">
-        <Avatar className="h-20 w-20 rounded-lg">
-          <AvatarFallback className="rounded-lg bg-black text-barber-gold">BE</AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="font-black">Logo da barbearia</p>
-          <p className="mt-1 text-sm text-slate-500">PNG ou JPG até 2MB. Usada no perfil, relatórios e mensagens.</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="outline" className="rounded-lg bg-white dark:bg-background">Alterar</Button>
-          <Button variant="outline" className="rounded-lg border-red-200 bg-red-50 text-red-600 hover:bg-red-100">Remover</Button>
-        </div>
-      </div>
-    </FormCard>
-  );
-}
-
-function ScheduleSettings() {
-  return (
-    <FormCard icon={Clock3} title="Horário de funcionamento" description="Configure dias abertos, horários e intervalos da unidade.">
-      <div className="space-y-3">
-        {weekDays.map(([day, open, close, active]) => (
-          <div key={day} className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
-            <div className="flex items-center justify-between gap-4">
-              <p className="font-black">{day}</p>
-              <Switch checked={active} aria-label={`Ativar ${day}`} />
-            </div>
-            <Input value={open} readOnly className="h-11 rounded-lg bg-white md:w-32 dark:bg-background" />
-            <Input value={close} readOnly className="h-11 rounded-lg bg-white md:w-32 dark:bg-background" />
-            <Button variant="outline" className={cn("h-11 rounded-lg", active ? "border-emerald-100 bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-400")}>
-              + Intervalo
-            </Button>
-          </div>
-        ))}
-      </div>
-    </FormCard>
-  );
-}
-
-function AppointmentSettings() {
-  return (
-    <FormCard icon={CalendarDays} title="Regras de agendamento" description="Defina limites, confirmações e comportamento da agenda.">
-      <div className="grid gap-5 md:grid-cols-2">
-        <Field label="Intervalo padrão entre serviços" value="30 minutos" />
-        <Field label="Antecedência mínima para agendar" value="1 hora" />
-        <Field label="Antecedência máxima para agendar" value="30 dias" />
-        <Field label="Cancelamento permitido com até" value="2 horas de antecedência" />
-      </div>
-      <ToggleRow className="mt-5" title="Confirmação automática por WhatsApp" description="Enviar lembrete e confirmação sem ação manual." checked />
-      <ToggleRow title="Bloquear horários ocupados" description="Evita conflitos de agenda entre profissionais e serviços." checked />
-    </FormCard>
-  );
-}
-
-function SystemPreferences() {
-  return (
-    <FormCard icon={Settings} title="Preferências do sistema" description="Padrões usados em relatórios, telas e cadastros.">
-      <div className="grid gap-4">
-        <Field label="Moeda" value="Real (R$)" />
-        <Field label="Fuso horário" value="(GMT-03:00) Brasília" />
-        <Field label="Idioma" value="Português (Brasil)" />
-        <Field label="Primeiro dia da semana" value="Segunda-feira" />
-      </div>
-      <ToggleRow className="mt-5" title="Controle de estoque" description="Produtos, alertas e baixa automática." checked />
-      <ToggleRow title="Módulo financeiro" description="Receitas, despesas, caixa e relatórios." checked />
-    </FormCard>
-  );
-}
-
-function IntegrationsCard() {
-  return (
-    <FormCard icon={Send} title="Integrações" description="Canais de confirmação e automações.">
-      <IntegrationRow title="WhatsApp Business" status="Conectado" checked />
-      <IntegrationRow title="E-mail transacional" status="Ativo" checked />
-      <IntegrationRow title="SMS" status="Pendente" />
-      <IntegrationRow title="Pagamentos Pix" status="Configurar" />
-    </FormCard>
-  );
-}
-
-function UsersCard() {
-  return (
-    <FormCard icon={UserCog} title="Usuários e permissões" description="Equipe com acesso ao BarberPro.">
-      <div className="space-y-4">
-        {users.map((user) => (
-          <div key={user.name} className="flex items-center gap-4 rounded-lg border border-slate-200 p-4">
-            <Avatar className="h-12 w-12">
-              <AvatarFallback className="bg-slate-200 text-slate-900">{user.initials}</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="font-black">{user.name}</p>
-              <p className="text-sm text-slate-500">{user.role} - {user.access}</p>
-            </div>
-            <Button variant="outline" className="hidden rounded-lg bg-white dark:bg-background sm:inline-flex">Editar</Button>
-          </div>
-        ))}
-      </div>
-      <Button className="mt-5 h-11 w-full rounded-lg bg-barber-gold text-white hover:bg-[#bd8f13]">Convidar usuário</Button>
-    </FormCard>
-  );
-}
-
-function SecurityCard() {
-  return (
-    <FormCard icon={ShieldCheck} title="Segurança" description="Proteção de dados e sessão da barbearia.">
-      <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-        <div className="flex items-center gap-3">
-          <LockKeyhole className="h-6 w-6 text-blue-700" />
-          <p className="font-black text-blue-950">Ambiente 100% seguro</p>
-        </div>
-        <p className="mt-2 text-sm text-blue-900">Sessões protegidas, isolamento por tenant e dados preparados para PostgreSQL.</p>
-      </div>
-      <ToggleRow className="mt-5" title="Exigir senha forte" description="Aplicar regras mínimas para novos usuários." checked />
-      <ToggleRow title="Registrar logs de alterações" description="Auditoria de ações importantes no sistema." checked />
-    </FormCard>
-  );
-}
-
 function FormCard({
   icon: Icon,
   title,
@@ -427,38 +811,88 @@ function FormCard({
 function Field({
   label,
   value,
+  onChange,
   icon: Icon,
   className,
+  type = "text",
 }: {
   label: string;
   value: string;
+  onChange: (value: string) => void;
   icon?: ComponentType<{ className?: string }>;
   className?: string;
+  type?: string;
 }) {
   return (
     <label className={cn("block", className)}>
       <span className="text-sm font-black">{label}</span>
       <div className="relative mt-2">
         {Icon && <Icon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />}
-        <Input value={value} readOnly className={cn("h-12 rounded-lg border-slate-200 bg-white text-base dark:bg-background", Icon && "pl-12")} />
+        <Input
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={cn("h-12 rounded-lg border-slate-200 bg-white text-base dark:bg-background", Icon && "pl-12")}
+        />
       </div>
     </label>
   );
 }
 
-function ToggleRow({ title, description, checked, className }: { title: string; description: string; checked?: boolean; className?: string }) {
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
+  return (
+    <label className="block">
+      <span className="text-sm font-black">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-2 h-12 w-full rounded-lg border border-slate-200 bg-white px-4 text-base outline-none focus:ring-2 focus:ring-barber-gold/30 dark:bg-background"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ToggleRow({
+  title,
+  description,
+  checked,
+  onChange,
+  className,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
   return (
     <div className={cn("flex items-center justify-between gap-5 border-t border-slate-100 py-4", className)}>
       <div>
         <p className="font-black">{title}</p>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">{description}</p>
       </div>
-      <Switch checked={checked} aria-label={title} />
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
     </div>
   );
 }
 
-function IntegrationRow({ title, status, checked }: { title: string; status: string; checked?: boolean }) {
+function IntegrationRow({
+  title,
+  status,
+  checked,
+  onChange,
+}: {
+  title: string;
+  status: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
   return (
     <div className="flex items-center justify-between gap-4 border-t border-slate-100 py-4 first:border-t-0 first:pt-0">
       <div>
@@ -467,10 +901,98 @@ function IntegrationRow({ title, status, checked }: { title: string; status: str
       </div>
       <div className="flex items-center gap-3">
         {checked && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
-        <Switch checked={checked} aria-label={title} />
+        <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
       </div>
     </div>
   );
+}
+
+function getInitials(name: string) {
+  const initials = name
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "NU";
+}
+
+function normalizeSettings(value: unknown): SettingsState {
+  if (!value || typeof value !== "object") {
+    return defaultSettings;
+  }
+
+  const input = value as Partial<SettingsState>;
+  const business = input.business ?? {};
+  const appointments = input.appointments ?? {};
+  const preferences = input.preferences ?? {};
+  const security = input.security ?? {};
+  const integrations = input.integrations ?? {};
+
+  return {
+    business: {
+      ...defaultSettings.business,
+      ...business,
+    },
+    schedule: normalizeSchedule(input.schedule),
+    appointments: {
+      ...defaultSettings.appointments,
+      ...appointments,
+    },
+    preferences: {
+      ...defaultSettings.preferences,
+      ...preferences,
+    },
+    integrations: {
+      ...defaultSettings.integrations,
+      ...integrations,
+    },
+    security: {
+      ...defaultSettings.security,
+      ...security,
+    },
+    users: normalizeUsers(input.users),
+  };
+}
+
+function normalizeSchedule(schedule: unknown): DayConfig[] {
+  if (!Array.isArray(schedule)) {
+    return defaultSettings.schedule;
+  }
+
+  return defaultSettings.schedule.map((defaultDay) => {
+    const savedDay = schedule.find((day) => {
+      return day && typeof day === "object" && "id" in day && (day as Partial<DayConfig>).id === defaultDay.id;
+    }) as Partial<DayConfig> | undefined;
+
+    return {
+      ...defaultDay,
+      ...savedDay,
+      intervals: Array.isArray(savedDay?.intervals) ? savedDay.intervals.filter((item): item is string => typeof item === "string") : [],
+    };
+  });
+}
+
+function normalizeUsers(users: unknown): TeamUser[] {
+  if (!Array.isArray(users) || users.length === 0) {
+    return defaultSettings.users;
+  }
+
+  return users
+    .filter((user): user is Partial<TeamUser> => Boolean(user && typeof user === "object"))
+    .map((user, index) => {
+      const name = typeof user.name === "string" && user.name.trim() ? user.name : `Usuário ${index + 1}`;
+
+      return {
+        id: typeof user.id === "string" ? user.id : String(index + 1),
+        name,
+        role: typeof user.role === "string" ? user.role : "Recepcionista",
+        access: typeof user.access === "string" ? user.access : "Agenda e clientes",
+        initials: typeof user.initials === "string" ? user.initials : getInitials(name),
+      };
+    });
 }
 
 function CrownIcon() {

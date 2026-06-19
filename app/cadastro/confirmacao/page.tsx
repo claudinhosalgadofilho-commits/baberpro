@@ -41,10 +41,18 @@ type InitialSettings = {
   description?: string;
 };
 
+type AccountData = {
+  adminName?: string;
+  email?: string;
+  role?: string;
+  passwordConfigured?: boolean;
+};
+
 export default function CadastroConfirmacaoPage() {
   const router = useRouter();
   const [isFinishing, setIsFinishing] = useState(false);
   const [settings, setSettings] = useState<InitialSettings | null>(null);
+  const [account, setAccount] = useState<AccountData | null>(null);
 
   useEffect(() => {
     const snapshot = getOnboardingSnapshot();
@@ -56,6 +64,7 @@ export default function CadastroConfirmacaoPage() {
     }
 
     setSettings((snapshot.settings || {}) as InitialSettings);
+    setAccount((snapshot.account || {}) as AccountData);
   }, [router]);
 
   const barberShop = useMemo(
@@ -133,7 +142,7 @@ export default function CadastroConfirmacaoPage() {
 
             <div className="mt-5 grid gap-5 xl:grid-cols-[0.76fr_1.24fr]">
               <SecurityCard />
-              <AccessCard />
+              <AccessCard account={account} />
             </div>
 
             <Card className="mt-6 rounded-lg border-blue-100 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.07)] dark:bg-card">
@@ -257,7 +266,7 @@ function SummaryCard({
   );
 }
 
-function AccessCard() {
+function AccessCard({ account }: { account: AccountData | null }) {
   return (
     <FormCard title="Informações de acesso" description="" icon={UserRound} iconClass="bg-violet-100 text-violet-700">
       <div className="-mt-2 flex justify-end">
@@ -266,9 +275,9 @@ function AccessCard() {
         </Button>
       </div>
       <div className="mt-6 grid gap-5 sm:grid-cols-[170px_1fr]">
-        <AccessLine icon={UserRound} label="Administrador:" value="João da Silva Santos" />
-        <AccessLine icon={Mail} label="E-mail:" value="joao@barbeariaestilo.com.br" />
-        <AccessLine icon={Briefcase} label="Cargo:" value="Administrador" />
+        <AccessLine icon={UserRound} label="Administrador:" value={account?.adminName || "Administrador"} />
+        <AccessLine icon={Mail} label="E-mail:" value={account?.email || "email não informado"} />
+        <AccessLine icon={Briefcase} label="Cargo:" value={account?.role || "Administrador"} />
         <AccessLine icon={ShieldCheck} label="Método de acesso:" value="E-mail e senha" />
       </div>
     </FormCard>

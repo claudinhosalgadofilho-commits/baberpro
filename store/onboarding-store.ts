@@ -32,6 +32,14 @@ export function saveOnboardingStep<T>(key: string, value: T) {
 }
 
 export function getFirstPendingOnboardingRoute(snapshot = getOnboardingSnapshot()) {
+  if (!snapshot.barberShop) {
+    return "/cadastro/barbearia";
+  }
+
+  if (!snapshot.plan || !snapshot.account) {
+    return "/cadastro/conta";
+  }
+
   if (!snapshot.settings) {
     return "/cadastro/configuracoes-iniciais";
   }

@@ -12,10 +12,10 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     user: {
-      name: session.name,
-      email: session.email,
+      name: session.name || "Joao Santos",
+      email: session.email || "joao@barbeariaestilo.com.br",
       role: session.role,
-      shopName: session.shopName,
+      shopName: session.shopName || "Barbearia Estilo",
       tenantId: session.tenantId,
     },
   });

@@ -167,7 +167,14 @@ export default function DashboardPage() {
         return response.json();
       })
       .then((data) => {
-        if (data.user) setUser(data.user);
+        if (data.user) {
+          setUser((current) => ({
+            name: typeof data.user.name === "string" && data.user.name.trim() ? data.user.name : current.name,
+            email: typeof data.user.email === "string" && data.user.email.trim() ? data.user.email : current.email,
+            role: typeof data.user.role === "string" && data.user.role.trim() ? data.user.role : current.role,
+            shopName: typeof data.user.shopName === "string" && data.user.shopName.trim() ? data.user.shopName : current.shopName,
+          }));
+        }
       })
       .catch(() => undefined);
   }, []);
@@ -635,12 +642,13 @@ function CrownIcon() {
   );
 }
 
-function firstName(name: string) {
+function firstName(name?: string) {
+  if (!name?.trim()) return "usuario";
   return name.trim().split(" ")[0] || "usuário";
 }
 
-function initials(name: string) {
-  const value = name
+function initials(name?: string) {
+  const value = (name || "")
     .trim()
     .split(" ")
     .filter(Boolean)

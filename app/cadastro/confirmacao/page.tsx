@@ -32,6 +32,7 @@ import {
   clearOnboardingState,
   getFirstPendingOnboardingRoute,
   getOnboardingSnapshot,
+  type OnboardingSnapshot,
 } from "@/store/onboarding-store";
 
 type InitialSettings = {
@@ -48,11 +49,14 @@ type AccountData = {
   passwordConfigured?: boolean;
 };
 
+const REGISTERED_USER_KEY = "barberpro:registered-user";
+
 export default function CadastroConfirmacaoPage() {
   const router = useRouter();
   const [isFinishing, setIsFinishing] = useState(false);
   const [settings, setSettings] = useState<InitialSettings | null>(null);
   const [account, setAccount] = useState<AccountData | null>(null);
+  const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
 
   useEffect(() => {
     const snapshot = getOnboardingSnapshot();
@@ -65,6 +69,7 @@ export default function CadastroConfirmacaoPage() {
 
     setSettings((snapshot.settings || {}) as InitialSettings);
     setAccount((snapshot.account || {}) as AccountData);
+    setSnapshot(snapshot);
   }, [router]);
 
   const barberShop = useMemo(
@@ -79,10 +84,22 @@ export default function CadastroConfirmacaoPage() {
 
   async function finishOnboarding() {
     setIsFinishing(true);
+    const registeredRaw = window.localStorage.getItem(REGISTERED_USER_KEY);
+    const registered = registeredRaw ? (JSON.parse(registeredRaw) as { password?: string }) : {};
+    const payload = snapshot
+      ? {
+          ...snapshot,
+          account: {
+            ...snapshot.account,
+            password: registered.password,
+          },
+        }
+      : null;
 
     const response = await fetch("/api/onboarding/finish", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -91,6 +108,7 @@ export default function CadastroConfirmacaoPage() {
     }
 
     clearOnboardingState();
+    window.localStorage.removeItem(REGISTERED_USER_KEY);
     router.push("/dashboard");
   }
 

@@ -169,6 +169,8 @@ const accountDefaultValues: AccountForm = {
   confirmPassword: "",
 };
 
+const REGISTERED_USER_KEY = "barberpro:registered-user";
+
 export default function CadastroContaPage() {
   const router = useRouter();
   const [dark, setDark] = useState(false);
@@ -200,12 +202,26 @@ export default function CadastroContaPage() {
 
   const onSubmit = form.handleSubmit((values) => {
     saveOnboardingStep(ONBOARDING_KEYS.plan, { name: selectedPlan });
+    const storedBarberShop = window.localStorage.getItem(ONBOARDING_KEYS.barberShop);
+    const barberShop = storedBarberShop ? JSON.parse(storedBarberShop) as { fantasyName?: string; name?: string } : {};
+    const shopName = barberShop.fantasyName || barberShop.name || "Barbearia Estilo";
+
     saveOnboardingStep(ONBOARDING_KEYS.account, {
       adminName: values.adminName,
       email: values.email,
       role: values.role,
       passwordConfigured: true,
     });
+    window.localStorage.setItem(
+      REGISTERED_USER_KEY,
+      JSON.stringify({
+        name: values.adminName,
+        email: values.email,
+        role: values.role,
+        password: values.password,
+        shopName,
+      }),
+    );
     router.push("/cadastro/configuracoes-iniciais");
   });
 

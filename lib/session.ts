@@ -6,6 +6,9 @@ export type BarberProSession = {
   userId: string;
   tenantId: string;
   role: "ADMIN";
+  name: string;
+  email: string;
+  shopName: string;
   createdAt: string;
 };
 

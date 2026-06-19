@@ -14,6 +14,7 @@ import {
   CircleHelp,
   Grid2X2,
   Headphones,
+  LogOut,
   Menu,
   Moon,
   Package,
@@ -148,22 +149,45 @@ const financeRows = [
 
 export default function DashboardPage() {
   const [dark, setDark] = useState(false);
+  const [user, setUser] = useState({
+    name: "João Santos",
+    email: "joao@barbeariaestilo.com.br",
+    role: "ADMIN",
+    shopName: "Barbearia Estilo",
+  });
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => {
+        if (!response.ok) throw new Error("Sessão não encontrada");
+        return response.json();
+      })
+      .then((data) => {
+        if (data.user) setUser(data.user);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
   return (
     <main className="min-h-screen bg-[#F8FAFC] text-barber-ink dark:bg-background dark:text-foreground">
       <div className="flex min-h-screen">
-        <Sidebar />
+        <Sidebar user={user} />
 
         <section className="min-w-0 flex-1 px-4 py-5 md:px-7 lg:px-8">
-          <Topbar dark={dark} setDark={setDark} />
+          <Topbar dark={dark} setDark={setDark} user={user} onLogout={handleLogout} />
 
           <div className="mt-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-3xl font-black tracking-normal md:text-4xl">Olá, João! 👋</h1>
+              <h1 className="text-3xl font-black tracking-normal md:text-4xl">Olá, {firstName(user.name)}! 👋</h1>
               <p className="mt-3 text-lg text-slate-500 dark:text-slate-300">Aqui está o resumo da sua barbearia hoje.</p>
             </div>
 
@@ -202,7 +226,7 @@ export default function DashboardPage() {
   );
 }
 
-function Sidebar() {
+function Sidebar({ user }: { user: { name: string; email: string; role: string; shopName: string } }) {
   return (
     <aside className="hidden min-h-screen w-[292px] shrink-0 flex-col bg-[#071018] px-6 py-8 text-white xl:flex">
       <Link href="/" className="mx-auto block" aria-label="Ir para a página inicial">
@@ -240,11 +264,11 @@ function Sidebar() {
 
       <Link href="/configuracoes" className="mt-6 flex items-center gap-4 rounded-lg p-2 transition-colors hover:bg-white/5">
         <Avatar className="h-14 w-14">
-          <AvatarFallback className="bg-[#1F2937] text-base">JS</AvatarFallback>
+          <AvatarFallback className="bg-[#1F2937] text-base">{initials(user.name)}</AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="font-bold">João Santos</p>
-          <p className="text-sm text-slate-300">Administrador</p>
+          <p className="truncate font-bold">{user.name}</p>
+          <p className="truncate text-sm text-slate-300">{roleLabel(user.role)}</p>
         </div>
         <ChevronDown className="h-4 w-4 text-slate-300" />
       </Link>
@@ -252,7 +276,17 @@ function Sidebar() {
   );
 }
 
-function Topbar({ dark, setDark }: { dark: boolean; setDark: (value: boolean) => void }) {
+function Topbar({
+  dark,
+  setDark,
+  user,
+  onLogout,
+}: {
+  dark: boolean;
+  setDark: (value: boolean) => void;
+  user: { name: string; email: string; role: string; shopName: string };
+  onLogout: () => void;
+}) {
   return (
     <header className="flex flex-wrap items-center gap-4">
       <Button variant="ghost" size="icon" className="h-11 w-11 rounded-lg text-slate-700 xl:hidden">
@@ -289,14 +323,18 @@ function Topbar({ dark, setDark }: { dark: boolean; setDark: (value: boolean) =>
 
         <Link href="/configuracoes" className="hidden h-14 items-center gap-4 rounded-lg border border-slate-200 bg-white px-4 shadow-sm dark:bg-card lg:flex">
           <Avatar className="h-10 w-10">
-            <AvatarFallback className="bg-barber-gold text-white">BE</AvatarFallback>
+            <AvatarFallback className="bg-barber-gold text-white">{initials(user.shopName)}</AvatarFallback>
           </Avatar>
           <div className="leading-tight">
-            <p className="font-black">Barbearia Estilo</p>
-            <p className="text-sm text-slate-500 dark:text-slate-300">Unidade principal</p>
+            <p className="max-w-[180px] truncate font-black">{user.shopName}</p>
+            <p className="max-w-[180px] truncate text-sm text-slate-500 dark:text-slate-300">{user.email}</p>
           </div>
           <ChevronDown className="h-4 w-4 text-slate-500" />
         </Link>
+        <Button onClick={onLogout} variant="outline" className="h-12 rounded-lg border-red-200 bg-white px-4 text-red-600 hover:bg-red-50 dark:bg-card">
+          <LogOut className="mr-2 h-5 w-5" />
+          Sair
+        </Button>
       </div>
     </header>
   );
@@ -597,11 +635,22 @@ function CrownIcon() {
   );
 }
 
+function firstName(name: string) {
+  return name.trim().split(" ")[0] || "usuário";
+}
+
 function initials(name: string) {
-  return name
+  const value = name
+    .trim()
     .split(" ")
+    .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase();
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return value || "BP";
+}
+
+function roleLabel(role: string) {
+  return role === "ADMIN" ? "Administrador" : role;
 }

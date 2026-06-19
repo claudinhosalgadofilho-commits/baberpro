@@ -52,17 +52,35 @@ export default function LoginPage() {
   const router = useRouter();
   const [dark, setDark] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [emailOrPhone, setEmailOrPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
   async function handleLogin() {
-    const response = await fetch("/api/auth/login", { method: "POST" });
+    setError("");
+
+    if (!emailOrPhone.trim() || !password) {
+      setError("Informe seu e-mail e senha para entrar.");
+      return;
+    }
+
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emailOrPhone, password }),
+    });
 
     if (response.ok) {
       router.push("/dashboard");
+      return;
     }
+
+    const data = await response.json().catch(() => null);
+    setError(data?.message || "E-mail ou senha inválidos. Use o usuário cadastrado no fluxo de cadastro.");
   }
 
   return (
@@ -184,7 +202,13 @@ export default function LoginPage() {
                     </label>
                     <div className="relative">
                       <Mail className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-500" />
-                      <Input id="email" className="h-[74px] rounded-lg pl-16 text-lg" placeholder="exemplo@email.com ou (11) 99999-9999" />
+                      <Input
+                        id="email"
+                        value={emailOrPhone}
+                        onChange={(event) => setEmailOrPhone(event.target.value)}
+                        className="h-[74px] rounded-lg pl-16 text-lg"
+                        placeholder="exemplo@email.com ou (11) 99999-9999"
+                      />
                     </div>
                   </div>
 
@@ -194,12 +218,24 @@ export default function LoginPage() {
                     </label>
                     <div className="relative">
                       <Lock className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-500" />
-                      <Input id="password" type="password" className="h-[74px] rounded-lg pl-16 pr-16 text-lg" placeholder="Digite sua senha" />
+                      <Input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") handleLogin();
+                        }}
+                        className="h-[74px] rounded-lg pl-16 pr-16 text-lg"
+                        placeholder="Digite sua senha"
+                      />
                       <button className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-500" aria-label="Mostrar senha">
                         <Eye className="h-6 w-6" />
                       </button>
                     </div>
                   </div>
+
+                  {error && <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">{error}</div>}
 
                   <div className="flex items-center justify-between gap-4">
                     <button type="button" className="flex items-center gap-3 text-base font-semibold" onClick={() => setRemember((value) => !value)}>

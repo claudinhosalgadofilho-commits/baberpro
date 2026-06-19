@@ -46,6 +46,7 @@ type AccountData = {
   adminName?: string;
   email?: string;
   role?: string;
+  password?: string;
   passwordConfigured?: boolean;
 };
 
@@ -57,6 +58,7 @@ export default function CadastroConfirmacaoPage() {
   const [settings, setSettings] = useState<InitialSettings | null>(null);
   const [account, setAccount] = useState<AccountData | null>(null);
   const [snapshot, setSnapshot] = useState<OnboardingSnapshot | null>(null);
+  const [finishError, setFinishError] = useState("");
 
   useEffect(() => {
     const snapshot = getOnboardingSnapshot();
@@ -84,14 +86,16 @@ export default function CadastroConfirmacaoPage() {
 
   async function finishOnboarding() {
     setIsFinishing(true);
+    setFinishError("");
     const registeredRaw = window.localStorage.getItem(REGISTERED_USER_KEY);
     const registered = registeredRaw ? (JSON.parse(registeredRaw) as { password?: string }) : {};
+    const snapshotAccount = (snapshot?.account || {}) as AccountData;
     const payload = snapshot
       ? {
           ...snapshot,
           account: {
             ...snapshot.account,
-            password: registered.password,
+            password: snapshotAccount.password || registered.password,
           },
         }
       : null;
@@ -103,6 +107,8 @@ export default function CadastroConfirmacaoPage() {
     });
 
     if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      setFinishError(data?.message || "Nao foi possivel finalizar o cadastro. Confira os dados e tente novamente.");
       setIsFinishing(false);
       return;
     }
@@ -190,6 +196,7 @@ export default function CadastroConfirmacaoPage() {
                 <div>
                   <p className="text-lg font-black text-blue-900 dark:text-blue-200">Pronto para começar?</p>
                   <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Acesse o painel e explore todas as funcionalidades do BarberPro.</p>
+                  {finishError && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{finishError}</p>}
                   <Button onClick={finishOnboarding} disabled={isFinishing} className="mt-5 h-14 w-full rounded-lg text-base">
                     {isFinishing ? "Finalizando..." : "Ir para o painel"}
                     <ArrowRight className="ml-2 h-5 w-5" />

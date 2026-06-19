@@ -5,83 +5,99 @@ import { prisma } from "@/lib/prisma";
 import { createSession } from "@/lib/session";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => ({}));
-  const account = body.account && typeof body.account === "object" ? body.account : {};
-  const barberShop = body.barberShop && typeof body.barberShop === "object" ? body.barberShop : {};
-  const settings = body.settings && typeof body.settings === "object" ? body.settings : {};
-  const name = typeof account.adminName === "string" && account.adminName.trim() ? account.adminName.trim() : "Joao Santos";
-  const email = typeof account.email === "string" && account.email.trim() ? account.email.trim().toLowerCase() : "joao@barbeariaestilo.com.br";
-  const shopName =
-    typeof settings.fantasyName === "string" && settings.fantasyName.trim()
-      ? settings.fantasyName.trim()
-      : typeof barberShop.fantasyName === "string" && barberShop.fantasyName.trim()
-        ? barberShop.fantasyName.trim()
-        : "Barbearia Estilo";
-  const password = typeof account.password === "string" && account.password.length >= 8 ? account.password : "";
+  try {
+    const body = await request.json().catch(() => ({}));
+    const account = body.account && typeof body.account === "object" ? body.account : {};
+    const barberShop = body.barberShop && typeof body.barberShop === "object" ? body.barberShop : {};
+    const settings = body.settings && typeof body.settings === "object" ? body.settings : {};
+    const name = typeof account.adminName === "string" && account.adminName.trim() ? account.adminName.trim() : "Joao Santos";
+    const email = typeof account.email === "string" && account.email.trim() ? account.email.trim().toLowerCase() : "";
+    const shopName =
+      typeof settings.fantasyName === "string" && settings.fantasyName.trim()
+        ? settings.fantasyName.trim()
+        : typeof barberShop.fantasyName === "string" && barberShop.fantasyName.trim()
+          ? barberShop.fantasyName.trim()
+          : "Barbearia Estilo";
+    const password = typeof account.password === "string" && account.password.length >= 8 ? account.password : "";
 
-  if (!password) {
-    return NextResponse.json({ ok: false, message: "Senha da conta nao encontrada." }, { status: 400 });
-  }
+    if (!email) {
+      return NextResponse.json({ ok: false, message: "E-mail da conta nao encontrado." }, { status: 400 });
+    }
 
-  const shop = await prisma.barberShop.create({
-    data: {
-      name: shopName,
-      slug: createSlug(shopName),
-      document: typeof barberShop.document === "string" ? barberShop.document : null,
-      phone: typeof barberShop.phone === "string" ? barberShop.phone : null,
-      email: typeof barberShop.email === "string" ? barberShop.email : email,
-      address: typeof barberShop.address === "string" ? barberShop.address : null,
-      city: typeof barberShop.city === "string" ? barberShop.city : null,
-      state: typeof barberShop.state === "string" ? barberShop.state : null,
-      timezone: "America/Sao_Paulo",
-      logoUrl: "/barberpro-logo-login.png",
-    },
-  });
+    if (!password) {
+      return NextResponse.json({ ok: false, message: "Senha da conta nao encontrada. Volte para a etapa Sua Conta e informe a senha novamente." }, { status: 400 });
+    }
 
-  const user = await prisma.user.upsert({
-    where: { email },
-    update: {
-      name,
-      passwordHash: hashPassword(password),
-      isActive: true,
-    },
-    create: {
+    const result = await prisma.$transaction(async (tx) => {
+      const shop = await tx.barberShop.create({
+        data: {
+          name: shopName,
+          slug: createSlug(shopName),
+          document: typeof barberShop.document === "string" ? barberShop.document : null,
+          phone: typeof barberShop.phone === "string" ? barberShop.phone : null,
+          email: typeof barberShop.email === "string" ? barberShop.email : email,
+          address: typeof barberShop.address === "string" ? barberShop.address : null,
+          city: typeof barberShop.city === "string" ? barberShop.city : null,
+          state: typeof barberShop.state === "string" ? barberShop.state : null,
+          timezone: "America/Sao_Paulo",
+          logoUrl: "/barberpro-logo-login.png",
+        },
+      });
+
+      const user = await tx.user.upsert({
+        where: { email },
+        update: {
+          name,
+          passwordHash: hashPassword(password),
+          isActive: true,
+        },
+        create: {
+          name,
+          email,
+          passwordHash: hashPassword(password),
+          isActive: true,
+        },
+      });
+
+      await tx.shopMembership.upsert({
+        where: {
+          userId_shopId: {
+            userId: user.id,
+            shopId: shop.id,
+          },
+        },
+        update: { role: "OWNER" },
+        create: {
+          userId: user.id,
+          shopId: shop.id,
+          role: "OWNER",
+        },
+      });
+
+      return { shop, user };
+    });
+
+    await createSession({
+      userId: result.user.id,
+      tenantId: result.shop.id,
+      role: "ADMIN",
       name,
       email,
-      passwordHash: hashPassword(password),
-      isActive: true,
-    },
-  });
+      shopName,
+      createdAt: new Date().toISOString(),
+    });
 
-  await prisma.shopMembership.upsert({
-    where: {
-      userId_shopId: {
-        userId: user.id,
-        shopId: shop.id,
-      },
-    },
-    update: { role: "OWNER" },
-    create: {
-      userId: user.id,
-      shopId: shop.id,
-      role: "OWNER",
-    },
-  });
-
-  await createSession({
-    userId: user.id,
-    tenantId: shop.id,
-    role: "ADMIN",
-    name,
-    email,
-    shopName,
-    createdAt: new Date().toISOString(),
-  });
-
-  return NextResponse.json({
-    ok: true,
-    redirectTo: "/dashboard",
-  });
+    return NextResponse.json({
+      ok: true,
+      redirectTo: "/dashboard",
+    });
+  } catch (error) {
+    console.error("Erro ao finalizar onboarding", error);
+    return NextResponse.json(
+      { ok: false, message: "Nao foi possivel finalizar o cadastro agora. Verifique a conexao com o banco e tente novamente." },
+      { status: 500 },
+    );
+  }
 }
 
 function createSlug(value: string) {

@@ -210,6 +210,7 @@ export default function CadastroContaPage() {
       adminName: values.adminName,
       email: values.email,
       role: values.role,
+      password: values.password,
       passwordConfigured: true,
     });
     window.localStorage.setItem(

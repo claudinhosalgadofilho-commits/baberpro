@@ -74,7 +74,21 @@ export async function POST(request: Request) {
         },
       });
 
-      return { shop, user };
+      const barber = await tx.barber.create({
+        data: {
+          shopId: shop.id,
+          userId: user.id,
+          name: "Carlos Eduardo",
+          specialty: "Barbeiro especialista",
+          commissionRate: 0.4,
+        },
+      });
+
+      await tx.service.createMany({
+        data: defaultServices(shop.id),
+      });
+
+      return { shop, user, barber };
     });
 
     await createSession({
@@ -114,4 +128,81 @@ function createSlug(value: string) {
       .replace(/^-+|-+$/g, "") || "barbearia";
 
   return `${base}-${Date.now().toString(36)}`;
+}
+
+function defaultServices(shopId: string) {
+  return [
+    {
+      shopId,
+      name: "Corte Degrade",
+      description: "Corte de cabelo degrade",
+      durationMin: 40,
+      priceCents: 6000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Corte Social",
+      description: "Corte tradicional",
+      durationMin: 30,
+      priceCents: 4000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Barba",
+      description: "Aparar e modelar barba",
+      durationMin: 30,
+      priceCents: 4000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Barba + Toalha Quente",
+      description: "Barba completa com toalha quente",
+      durationMin: 45,
+      priceCents: 5500,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Pigmentacao",
+      description: "Pigmentacao capilar",
+      durationMin: 60,
+      priceCents: 12000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Hidratacao Capilar",
+      description: "Hidratacao e nutricao dos fios",
+      durationMin: 50,
+      priceCents: 8000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Sobrancelha",
+      description: "Design de sobrancelha",
+      durationMin: 20,
+      priceCents: 3000,
+      color: "#D4A017",
+      isActive: true,
+    },
+    {
+      shopId,
+      name: "Corte + Barba",
+      description: "Corte de cabelo + barba",
+      durationMin: 70,
+      priceCents: 9000,
+      color: "#D4A017",
+      isActive: true,
+    },
+  ];
 }

@@ -65,6 +65,12 @@ type ServiceItem = {
   iconTone: string;
 };
 
+type CategoryItem = {
+  label: string;
+  value: string;
+  count: number;
+};
+
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: Grid2X2 },
   { label: "Agenda", href: "/agendamentos", icon: CalendarDays },
@@ -79,7 +85,7 @@ const navItems = [
   { label: "Ajuda", href: "/#contato", icon: CircleHelp },
 ];
 
-const services: ServiceItem[] = [
+const fallbackServices: ServiceItem[] = [
   { id: "srv-001", name: "Corte Degrade", description: "Corte de cabelo degrade", category: "Corte de cabelo", duration: 40, price: 60, professional: "Carlos Eduardo", status: "active", iconTone: "bg-blue-100 text-blue-800" },
   { id: "srv-002", name: "Corte Social", description: "Corte tradicional", category: "Corte de cabelo", duration: 30, price: 40, professional: "Carlos Eduardo", status: "active", iconTone: "bg-slate-100 text-slate-800" },
   { id: "srv-003", name: "Barba", description: "Aparar e modelar barba", category: "Barba", duration: 30, price: 40, professional: "Carlos Eduardo", status: "active", iconTone: "bg-orange-100 text-orange-700" },
@@ -90,7 +96,7 @@ const services: ServiceItem[] = [
   { id: "srv-008", name: "Corte + Barba", description: "Corte de cabelo + barba", category: "Pacotes", duration: 70, price: 90, professional: "Carlos Eduardo", status: "active", iconTone: "bg-emerald-100 text-emerald-700" },
 ];
 
-const categoryCounts = [
+const fallbackCategoryCounts: CategoryItem[] = [
   { label: "Todos os servicos", value: "all", count: 18 },
   { label: "Corte de cabelo", value: "Corte de cabelo", count: 8 },
   { label: "Barba", value: "Barba", count: 5 },
@@ -99,7 +105,7 @@ const categoryCounts = [
   { label: "Pacotes", value: "Pacotes", count: 1 },
 ];
 
-const ranking = [
+const fallbackRanking = [
   { name: "Corte Degrade", value: 124 },
   { name: "Barba", value: 98 },
   { name: "Corte + Barba", value: 65 },
@@ -107,14 +113,14 @@ const ranking = [
   { name: "Sobrancelha", value: 31 },
 ];
 
-const categoryRevenue = [
+const fallbackCategoryRevenue = [
   { name: "Corte de cabelo", value: 578.25, percent: "45%", color: "#D99500" },
   { name: "Barba", value: 321.25, percent: "25%", color: "#F2A51B" },
   { name: "Tratamentos", value: 257, percent: "20%", color: "#7EA2F2" },
   { name: "Pacotes", value: 128.5, percent: "10%", color: "#7C5AC7" },
 ];
 
-const history = [
+const fallbackHistory = [
   { month: "Dez", value: 500 },
   { month: "Jan", value: 780 },
   { month: "Fev", value: 1120 },
@@ -129,13 +135,41 @@ export default function ServicesPage() {
   const [category, setCategory] = useState("all");
   const [professional, setProfessional] = useState("all");
   const [onlyActive, setOnlyActive] = useState(true);
+  const [serviceRows, setServiceRows] = useState<ServiceItem[]>(fallbackServices);
+  const [categories, setCategories] = useState<CategoryItem[]>(fallbackCategoryCounts);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(1285);
+  const [rankingRows, setRankingRows] = useState(fallbackRanking);
+  const [categoryRevenueRows, setCategoryRevenueRows] = useState(fallbackCategoryRevenue);
+  const [historyRows, setHistoryRows] = useState(fallbackHistory);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
+  useEffect(() => {
+    fetch("/api/services")
+      .then((response) => {
+        if (!response.ok) throw new Error("Nao foi possivel carregar servicos.");
+        return response.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data.services) && data.services.length > 0) setServiceRows(data.services);
+        if (Array.isArray(data.categories) && data.categories.length > 0) setCategories(data.categories);
+        if (typeof data.monthlyRevenue === "number") setMonthlyRevenue(data.monthlyRevenue);
+        if (Array.isArray(data.ranking) && data.ranking.length > 0) setRankingRows(data.ranking);
+        if (Array.isArray(data.revenueByCategory) && data.revenueByCategory.length > 0) setCategoryRevenueRows(data.revenueByCategory);
+        if (Array.isArray(data.history) && data.history.length > 0) setHistoryRows(data.history);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const professionals = useMemo(
+    () => Array.from(new Set(serviceRows.map((service) => service.professional))).filter(Boolean),
+    [serviceRows],
+  );
+
   const filteredServices = useMemo(() => {
-    return services.filter((service) => {
+    return serviceRows.filter((service) => {
       const matchesQuery = `${service.name} ${service.description}`.toLowerCase().includes(query.toLowerCase());
       const matchesCategory = category === "all" || service.category === category;
       const matchesProfessional = professional === "all" || service.professional === professional;
@@ -143,7 +177,7 @@ export default function ServicesPage() {
 
       return matchesQuery && matchesCategory && matchesProfessional && matchesStatus;
     });
-  }, [category, onlyActive, professional, query]);
+  }, [category, onlyActive, professional, query, serviceRows]);
 
   function clearFilters() {
     setQuery("");
@@ -188,12 +222,14 @@ export default function ServicesPage() {
 
           <div className="mt-7 grid gap-5 xl:grid-cols-[300px_1fr]">
             <aside className="space-y-5">
-              <ServicesCategorySidebar selected={category} onSelect={setCategory} />
+              <ServicesCategorySidebar categories={categories} selected={category} onSelect={setCategory} />
               <ServicesFilters
                 query={query}
                 setQuery={setQuery}
+                categories={categories}
                 category={category}
                 setCategory={setCategory}
+                professionals={professionals}
                 professional={professional}
                 setProfessional={setProfessional}
                 onlyActive={onlyActive}
@@ -203,15 +239,15 @@ export default function ServicesPage() {
             </aside>
 
             <div className="min-w-0 space-y-5">
-              <ServicesStatsCards />
-              <ServicesTable services={filteredServices} />
+              <ServicesStatsCards services={serviceRows} monthlyRevenue={monthlyRevenue} />
+              <ServicesTable services={filteredServices} totalCount={serviceRows.length} />
             </div>
           </div>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-3">
-            <MostPerformedServicesCard />
-            <RevenueByCategoryChart />
-            <RevenueHistoryChart />
+            <MostPerformedServicesCard ranking={rankingRows} />
+            <RevenueByCategoryChart data={categoryRevenueRows} />
+            <RevenueHistoryChart data={historyRows} />
           </div>
         </section>
       </div>
@@ -323,13 +359,13 @@ function Topbar({ dark, setDark }: { dark: boolean; setDark: (value: boolean) =>
   );
 }
 
-function ServicesCategorySidebar({ selected, onSelect }: { selected: string; onSelect: (value: string) => void }) {
+function ServicesCategorySidebar({ categories, selected, onSelect }: { categories: CategoryItem[]; selected: string; onSelect: (value: string) => void }) {
   return (
     <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:bg-card">
       <CardContent className="p-5">
         <h2 className="text-lg font-black">Categorias</h2>
         <div className="mt-4 space-y-1">
-          {categoryCounts.map((item) => (
+          {categories.map((item) => (
             <button
               key={item.value}
               type="button"
@@ -352,8 +388,10 @@ function ServicesCategorySidebar({ selected, onSelect }: { selected: string; onS
 function ServicesFilters({
   query,
   setQuery,
+  categories,
   category,
   setCategory,
+  professionals,
   professional,
   setProfessional,
   onlyActive,
@@ -362,8 +400,10 @@ function ServicesFilters({
 }: {
   query: string;
   setQuery: (value: string) => void;
+  categories: CategoryItem[];
   category: string;
   setCategory: (value: string) => void;
+  professionals: string[];
   professional: string;
   setProfessional: (value: string) => void;
   onlyActive: boolean;
@@ -391,7 +431,7 @@ function ServicesFilters({
                 <SelectValue placeholder="Todas as categorias" />
               </SelectTrigger>
               <SelectContent>
-                {categoryCounts.map((item) => (
+                {categories.map((item) => (
                   <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
                 ))}
               </SelectContent>
@@ -406,7 +446,9 @@ function ServicesFilters({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos os profissionais</SelectItem>
-                <SelectItem value="Carlos Eduardo">Carlos Eduardo</SelectItem>
+                {professionals.map((item) => (
+                  <SelectItem key={item} value={item}>{item}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </label>
@@ -426,12 +468,14 @@ function ServicesFilters({
   );
 }
 
-function ServicesStatsCards() {
+function ServicesStatsCards({ services, monthlyRevenue }: { services: ServiceItem[]; monthlyRevenue: number }) {
+  const activeCount = services.filter((service) => service.status === "active").length;
+  const inactiveCount = services.length - activeCount;
   const stats = [
-    { label: "Total de servicos", value: "18", icon: Sparkles, tone: "text-barber-gold bg-[#FFF8E7]" },
-    { label: "Servicos ativos", value: "18", icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-50" },
-    { label: "Servicos inativos", value: "0", icon: XCircle, tone: "text-red-600 bg-red-50" },
-    { label: "Faturamento mes", value: "R$ 1.285,00", icon: CircleDollarSign, tone: "text-barber-gold bg-[#FFF8E7]" },
+    { label: "Total de servicos", value: String(services.length), icon: Sparkles, tone: "text-barber-gold bg-[#FFF8E7]" },
+    { label: "Servicos ativos", value: String(activeCount), icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-50" },
+    { label: "Servicos inativos", value: String(inactiveCount), icon: XCircle, tone: "text-red-600 bg-red-50" },
+    { label: "Faturamento mes", value: formatMoney(monthlyRevenue), icon: CircleDollarSign, tone: "text-barber-gold bg-[#FFF8E7]" },
   ];
 
   return (
@@ -453,7 +497,7 @@ function ServicesStatsCards() {
   );
 }
 
-function ServicesTable({ services }: { services: ServiceItem[] }) {
+function ServicesTable({ services, totalCount }: { services: ServiceItem[]; totalCount: number }) {
   return (
     <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:bg-card">
       <CardContent className="p-0">
@@ -524,7 +568,7 @@ function ServicesTable({ services }: { services: ServiceItem[] }) {
         </Table>
 
         <div className="flex flex-col gap-4 border-t border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500">Mostrando 1 a {services.length} de 18 servicos</p>
+          <p className="text-sm text-slate-500">Mostrando 1 a {services.length} de {totalCount} servicos</p>
           <div className="flex items-center gap-2">
             <Button variant="outline" className="h-10 rounded-lg bg-white dark:bg-background">Anterior</Button>
             {[1, 2, 3].map((page) => (
@@ -574,8 +618,8 @@ function CategoryBadge({ category }: { category: string }) {
   return <span className={cn("inline-flex rounded-md border px-3 py-1 text-xs font-bold", styles[category] || "border-slate-200 bg-slate-50")}>{category}</span>;
 }
 
-function MostPerformedServicesCard() {
-  const max = Math.max(...ranking.map((item) => item.value));
+function MostPerformedServicesCard({ ranking }: { ranking: Array<{ name: string; value: number }> }) {
+  const max = Math.max(...ranking.map((item) => item.value), 1);
 
   return (
     <Card className="rounded-lg border-slate-200 bg-white shadow-sm dark:bg-card">
@@ -601,7 +645,7 @@ function MostPerformedServicesCard() {
   );
 }
 
-function RevenueByCategoryChart() {
+function RevenueByCategoryChart({ data }: { data: Array<{ name: string; value: number; percent: string; color: string }> }) {
   const mounted = useMounted();
 
   return (
@@ -616,8 +660,8 @@ function RevenueByCategoryChart() {
             {mounted ? (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={categoryRevenue} innerRadius={48} outerRadius={76} dataKey="value" stroke="none">
-                    {categoryRevenue.map((entry) => (
+                  <Pie data={data} innerRadius={48} outerRadius={76} dataKey="value" stroke="none">
+                    {data.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
@@ -629,7 +673,7 @@ function RevenueByCategoryChart() {
             )}
           </div>
           <div className="space-y-3 self-center">
-            {categoryRevenue.map((item) => (
+            {data.map((item) => (
               <div key={item.name} className="flex items-start gap-3 text-sm">
                 <span className="mt-1 h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
                 <div className="flex-1">
@@ -645,7 +689,7 @@ function RevenueByCategoryChart() {
   );
 }
 
-function RevenueHistoryChart() {
+function RevenueHistoryChart({ data }: { data: Array<{ month: string; value: number }> }) {
   const mounted = useMounted();
 
   return (
@@ -655,7 +699,7 @@ function RevenueHistoryChart() {
         <div className="mt-4 h-[190px]">
           {mounted ? (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={history} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
+              <AreaChart data={data} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
                 <defs>
                   <linearGradient id="serviceRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#D4A017" stopOpacity={0.35} />

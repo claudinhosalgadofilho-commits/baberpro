@@ -93,8 +93,12 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Erro ao finalizar onboarding", error);
+    const message = error instanceof Error && error.message.includes("Can't reach database server")
+      ? "Nao foi possivel conectar ao Supabase agora. Verifique a conexao do banco e tente novamente."
+      : "Nao foi possivel finalizar o cadastro agora. Verifique a conexao com o banco e tente novamente.";
+
     return NextResponse.json(
-      { ok: false, message: "Nao foi possivel finalizar o cadastro agora. Verifique a conexao com o banco e tente novamente." },
+      { ok: false, message },
       { status: 500 },
     );
   }

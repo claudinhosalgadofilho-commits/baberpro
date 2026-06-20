@@ -90,12 +90,20 @@ export default function CadastroConfirmacaoPage() {
     const registeredRaw = window.localStorage.getItem(REGISTERED_USER_KEY);
     const registered = registeredRaw ? (JSON.parse(registeredRaw) as { password?: string }) : {};
     const snapshotAccount = (snapshot?.account || {}) as AccountData;
+    const password = snapshotAccount.password || registered.password;
+
+    if (!password) {
+      setFinishError("Senha da conta nao encontrada. Volte para a etapa Sua Conta, informe a senha novamente e continue.");
+      setIsFinishing(false);
+      return;
+    }
+
     const payload = snapshot
       ? {
           ...snapshot,
           account: {
             ...snapshot.account,
-            password: snapshotAccount.password || registered.password,
+            password,
           },
         }
       : null;
